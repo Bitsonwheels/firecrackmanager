@@ -49,3 +49,11 @@ It provides a REST API and web-based UI for managing virtual machines, networks,
 - **Privilege Groups**: Assign users to groups with specific permissions
 - Group-level VM access control (start, stop, console, edit, snapshot, disk)
 - Session-based authentication
+
+## Changelog
+
+### 2026-10-02
+- Resolve the Firecracker/Jailer binary path at runtime instead of hardcoding
+  `/usr/sbin/firecracker`. It now prefers `PATH`, then the common install
+  directories (`/usr/local/bin`, …), and only falls back to `/usr/sbin`.
+  Installations outside `/usr/sbin` no longer need a manual symlink.
