@@ -27,12 +27,17 @@ import (
 	"time"
 
 	"firecrackmanager/internal/database"
+	"firecrackmanager/internal/firecracker"
 	"firecrackmanager/internal/network"
 )
 
+// 二进制路径在包加载时解析一次：优先 PATH，其次历史默认路径。
+var (
+	FirecrackerBinary = firecracker.BinaryPath()
+	JailerBinary      = firecracker.JailerPath()
+)
+
 const (
-	FirecrackerBinary = "/usr/sbin/firecracker"
-	JailerBinary      = "/usr/sbin/jailer"
 	DefaultVCPU       = 1
 	DefaultMemoryMB   = 512
 	DefaultKernelArgs = "console=ttyS0,115200n8 reboot=k panic=1"

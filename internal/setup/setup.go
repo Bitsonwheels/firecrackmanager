@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"firecrackmanager/internal/database"
+	"firecrackmanager/internal/firecracker"
 	"firecrackmanager/internal/kernel"
 	"firecrackmanager/internal/proxyconfig"
 )
@@ -212,9 +213,10 @@ func (s *Setup) installFirecracker() error {
 	s.logger("[2/10] Installing Firecracker...")
 
 	// Check if already installed
-	if _, err := os.Stat("/usr/sbin/firecracker"); err == nil {
+	fcPath := firecracker.BinaryPath()
+	if _, err := os.Stat(fcPath); err == nil {
 		// Get version
-		out, _ := exec.Command("/usr/sbin/firecracker", "--version").Output()
+		out, _ := exec.Command(fcPath, "--version").Output()
 		version := strings.TrimSpace(string(out))
 		s.logger("  Firecracker already installed: %s", version)
 		s.addResult("Firecracker installation", true, "Already installed: "+version, nil)
@@ -429,8 +431,9 @@ func (s *Setup) UpgradeFirecracker() error {
 
 	// Get current version
 	currentVersion := ""
-	if _, err := os.Stat("/usr/sbin/firecracker"); err == nil {
-		out, _ := exec.Command("/usr/sbin/firecracker", "--version").Output()
+	fcPath := firecracker.BinaryPath()
+	if _, err := os.Stat(fcPath); err == nil {
+		out, _ := exec.Command(fcPath, "--version").Output()
 		currentVersion = strings.TrimSpace(string(out))
 		if parts := strings.Fields(currentVersion); len(parts) >= 2 {
 			currentVersion = parts[1]
@@ -538,8 +541,9 @@ func (s *Setup) UpgradeFirecrackerWithProgress(progress ProgressCallback, versio
 
 	// Get current version
 	currentVersion := ""
-	if _, err := os.Stat("/usr/sbin/firecracker"); err == nil {
-		out, _ := exec.Command("/usr/sbin/firecracker", "--version").Output()
+	fcPath := firecracker.BinaryPath()
+	if _, err := os.Stat(fcPath); err == nil {
+		out, _ := exec.Command(fcPath, "--version").Output()
 		currentVersion = strings.TrimSpace(string(out))
 		if parts := strings.Fields(currentVersion); len(parts) >= 2 {
 			currentVersion = parts[1]

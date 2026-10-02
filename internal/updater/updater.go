@@ -12,6 +12,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 
+	"firecrackmanager/internal/firecracker"
 	"firecrackmanager/internal/setup"
 )
 
@@ -106,7 +107,7 @@ func (u *Updater) CheckForUpdates() {
 	}
 
 	// Get current installed version
-	fcPath := "/usr/sbin/firecracker"
+	fcPath := firecracker.BinaryPath()
 	if _, err := os.Stat(fcPath); err == nil {
 		out, err := exec.Command(fcPath, "--version").Output()
 		if err == nil {

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"firecrackmanager/internal/database"
+	"firecrackmanager/internal/firecracker"
 	"firecrackmanager/internal/firewall"
 	"firecrackmanager/internal/hostnet"
 	"firecrackmanager/internal/kernel"
@@ -4916,7 +4917,7 @@ func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Firecracker version
 	fcVersion := "not installed"
-	fcPath := "/usr/sbin/firecracker"
+	fcPath := firecracker.BinaryPath()
 	if _, err := os.Stat(fcPath); err == nil {
 		out, err := exec.Command(fcPath, "--version").Output()
 		if err == nil {
