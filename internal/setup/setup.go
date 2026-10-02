@@ -30,6 +30,7 @@ const (
 	DefaultDataDir         = "/var/lib/firecrackmanager"
 	DefaultLogDir          = "/var/log/firecrackmanager"
 	DefaultPidFile         = "/var/run/firecrackmanager.pid"
+	DefaultBuilderDir      = "/home/Builder"
 
 	// Firecracker compatible kernel and rootfs from quickstart guide
 	DebianKernelURL = "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin"
@@ -694,6 +695,8 @@ func (s *Setup) createDirectories() error {
 		DefaultLogDir,
 		filepath.Dir(DefaultConfigPath),
 		filepath.Dir(DefaultPidFile),
+		// systemd 的 ReadWritePaths 引用不存在的目录会导致 unit 启动失败，这里一并创建
+		DefaultBuilderDir,
 	}
 
 	for _, dir := range dirs {
@@ -962,14 +965,21 @@ func (s *Setup) createSystemdService() error {
 
 	servicePath := "/etc/systemd/system/firecrackmanager.service"
 
-	// Find the binary location
+	// Find the binary location: ExecStart 必须是绝对路径，systemd 拒绝相对路径
 	binaryPath, err := exec.LookPath("firecrackmanager")
-	if err != nil {
+	if err != nil || !filepath.IsAbs(binaryPath) {
+		binaryPath = ""
 		// Try common locations
-		for _, path := range []string{"/usr/local/bin/firecrackmanager", "/usr/bin/firecrackmanager", "./firecrackmanager"} {
+		for _, path := range []string{"/usr/local/bin/firecrackmanager", "/usr/bin/firecrackmanager"} {
 			if _, err := os.Stat(path); err == nil {
 				binaryPath = path
 				break
+			}
+		}
+		// 最后用自身路径（绝对）兜底
+		if binaryPath == "" {
+			if self, err := os.Executable(); err == nil {
+				binaryPath = self
 			}
 		}
 	}
@@ -979,35 +989,7 @@ func (s *Setup) createSystemdService() error {
 		s.logger("  Warning: Binary not found, using default path: %s", binaryPath)
 	}
 
-	serviceContent := fmt.Sprintf(`[Unit]
-Description=FireCrackManager - MicroVM Management Daemon
-After=network.target
-Documentation=https://github.com/firecracker-microvm/firecracker
-
-[Service]
-Type=simple
-ExecStart=%s -config %s
-PIDFile=%s
-Restart=on-failure
-RestartSec=5
-StandardOutput=append:%s
-StandardError=append:%s
-
-# Security settings - relaxed for image building features (chroot, mount, apt)
-NoNewPrivileges=false
-ProtectSystem=false
-ProtectHome=false
-PrivateTmp=false
-
-# Required capabilities for VM management, networking, and image building
-AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
-
-[Install]
-WantedBy=multi-user.target
-`, binaryPath, DefaultConfigPath, DefaultPidFile,
-		filepath.Join(DefaultLogDir, "firecrackmanager.log"),
-		filepath.Join(DefaultLogDir, "firecrackmanager.log"))
+	serviceContent := serviceFileContent(binaryPath)
 
 	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
 		s.addResult("Systemd service", false, "Failed to write service file", err)
@@ -1032,6 +1014,42 @@ WantedBy=multi-user.target
 
 	s.addResult("Systemd service", true, "Service created and enabled", nil)
 	return nil
+}
+
+// serviceFileContent 生成 systemd unit 内容。
+// 注意：ExecStart 必须是绝对路径（systemd 拒绝相对路径），ReadWritePaths 引用的
+// 目录必须存在，否则 unit 直接启动失败。
+func serviceFileContent(binaryPath string) string {
+	return fmt.Sprintf(`[Unit]
+Description=FireCrackManager - MicroVM Management Daemon
+After=network.target
+Documentation=https://github.com/firecracker-microvm/firecracker
+
+[Service]
+Type=simple
+ExecStart=%s -config %s
+PIDFile=%s
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening: 镜像构建需要 chroot/mount，所以放开 capabilities，
+# 但文件系统只允许写下面这些目录（其余由 ProtectSystem=strict 保护）
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%s %s %s /run %s
+PrivateTmp=true
+
+# Required capabilities for VM management, networking, and image building
+AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
+
+[Install]
+WantedBy=multi-user.target
+`, binaryPath, DefaultConfigPath, DefaultPidFile,
+		DefaultDataDir, DefaultLogDir, filepath.Dir(DefaultConfigPath), DefaultBuilderDir)
 }
 
 // downloadImages downloads the kernel and rootfs images

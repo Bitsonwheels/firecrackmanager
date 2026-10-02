@@ -44,6 +44,7 @@ mkdir -p /var/lib/firecrackmanager/sockets
 mkdir -p /var/lib/firecrackmanager/snapshots
 mkdir -p /var/lib/firecrackmanager/disks
 mkdir -p /var/log/firecrackmanager
+mkdir -p /home/Builder
 ```
 
 ### Step 3: Create Configuration File
@@ -75,6 +76,15 @@ ExecStart=/usr/local/bin/firecrackmanager -config /etc/firecrackmanager/settings
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/firecrackmanager /var/log/firecrackmanager /etc/firecrackmanager /run /home/Builder
+PrivateTmp=true
+AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
 
 [Install]
 WantedBy=multi-user.target

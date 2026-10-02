@@ -57,3 +57,17 @@ It provides a REST API and web-based UI for managing virtual machines, networks,
   `/usr/sbin/firecracker`. It now prefers `PATH`, then the common install
   directories (`/usr/local/bin`, …), and only falls back to `/usr/sbin`.
   Installations outside `/usr/sbin` no longer need a manual symlink.
+- Fix the systemd unit written by `firecrackmanager -setup`: it no longer
+  references the binary by the relative path `./firecrackmanager`, which
+  systemd rejected with `bad-setting` ("Neither a valid executable name nor
+  an absolute path"). The absolute path of the running binary is used as
+  fallback.
+- Align the generated unit with the deployed one: hardening
+  (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`) is
+  now enabled and `/home/Builder` is created up front, since a missing
+  `ReadWritePaths` entry makes the unit fail to start. `StandardOutput` /
+  `StandardError` now go to the journal instead of appending to the log
+  file, which already received every line twice via the daemon's own
+  `MultiWriter`.
+- Add `/etc/firecrackmanager` to `ReadWritePaths` in the unit files so that
+  saving the proxy configuration keeps working under `ProtectSystem=strict`.
