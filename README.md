@@ -74,3 +74,8 @@ It provides a REST API and web-based UI for managing virtual machines, networks,
 - Grant the jailer its chroot directory (`/srv/jailer`) in the systemd
   sandbox. Enabling the jailer previously failed because `ProtectSystem=strict`
   made the jail directory read-only; the directory is now created up front.
+- The kernel builder no longer installs build dependencies. It only checks
+  them (`rpm -q` / `dpkg-query -W`) and reports what is missing. Installing
+  packages from an HTTP-triggered build was mutating the host's package list,
+  and it broke under `ProtectSystem=strict` because dnf writes lock files to
+  `/var/cache/dnf`.

@@ -139,7 +139,7 @@ func (b *Builder) runBuild(buildID, version string) {
 
 	ctx := context.Background()
 
-	// Step 1: Install dependencies (0-15%)
+	// Step 1: Check dependencies (0-15%)
 	if err := b.installDependencies(buildID); err != nil {
 		b.failBuild(buildID, "Failed to install dependencies: "+err.Error())
 		return
@@ -186,51 +186,88 @@ func (b *Builder) runBuild(buildID, version string) {
 	b.logger("Kernel build completed: %s -> %s", version, finalPath)
 }
 
-// installDependencies installs required build dependencies
-func (b *Builder) installDependencies(buildID string) error {
-	b.updateProgress(buildID, StateInstalling, 0, "Installing build dependencies...")
-
-	// Check if we're on Debian/Ubuntu or RHEL-based
-	var cmd *exec.Cmd
-	if _, err := os.Stat("/usr/bin/apt-get"); err == nil {
-		// Debian/Ubuntu
-		deps := []string{
-			"build-essential", "libncurses-dev", "bison", "flex",
-			"libssl-dev", "libelf-dev", "bc", "git", "wget", "cpio",
-			"python3", "xz-utils", "lz4",
-		}
-
-		b.addOutput(buildID, "Updating package lists...")
-		cmd = exec.Command("apt-get", "update")
-		if err := b.runCommandWithOutput(buildID, cmd); err != nil {
-			return fmt.Errorf("apt-get update failed: %v", err)
-		}
-		b.updateProgress(buildID, StateInstalling, 5, "Installing packages...")
-
-		args := append([]string{"install", "-y"}, deps...)
-		cmd = exec.Command("apt-get", args...)
-		if err := b.runCommandWithOutput(buildID, cmd); err != nil {
-			return fmt.Errorf("apt-get install failed: %v", err)
-		}
-	} else if _, err := os.Stat("/usr/bin/dnf"); err == nil {
-		// Fedora/RHEL
-		deps := []string{
-			"gcc", "make", "ncurses-devel", "bison", "flex",
-			"openssl-devel", "elfutils-libelf-devel", "bc", "git", "wget",
-			"python3", "xz", "lz4",
-		}
-
-		args := append([]string{"install", "-y"}, deps...)
-		cmd = exec.Command("dnf", args...)
-		if err := b.runCommandWithOutput(buildID, cmd); err != nil {
-			return fmt.Errorf("dnf install failed: %v", err)
-		}
-	} else {
-		return fmt.Errorf("unsupported distribution: cannot find apt-get or dnf")
+// missingDependencies gibt die Pakete zurück, die auf diesem Host fehlen
+func missingDependencies() (missing []string, err error) {
+	deps, query, err := dependencyQuery()
+	if err != nil {
+		return nil, err
 	}
 
-	b.updateProgress(buildID, StateInstalling, 15, "Dependencies installed")
+	// rpm -q --qf '%{NAME}\n' druckt nur installierte Pakete, unbekannte gar nicht.
+	// dpkg-query -W kennt auch deinstallierte, deshalb liefert das Format dort ein
+	// Statusfeld mit, das geprüft wird.
+	output, _ := exec.Command(query[0], append(query[1:], deps...)...).Output()
+
+	present := map[string]bool{}
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if len(fields) > 1 && fields[1] != "installed" {
+			continue
+		}
+		present[fields[0]] = true
+	}
+
+	for _, dep := range deps {
+		if !present[dep] {
+			missing = append(missing, dep)
+		}
+	}
+	return missing, nil
+}
+
+// installDependencies prüft, ob die Build-Abhängigkeiten vorhanden sind.
+//
+// Installiert wird bewusst nichts: das hier läuft als Teil eines HTTP-Requests
+// und darf nicht die Paketliste des Hosts mutieren. Fehlende Pakete werden
+// gemeldet, der Admin installiert sie selbst.
+func (b *Builder) installDependencies(buildID string) error {
+	b.updateProgress(buildID, StateInstalling, 0, "Checking build dependencies...")
+
+	missing, err := missingDependencies()
+	if err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing build dependencies, install as root: %s", strings.Join(missing, " "))
+	}
+
+	b.addOutput(buildID, "Build dependencies satisfied")
+	b.updateProgress(buildID, StateInstalling, 15, "Dependencies satisfied")
 	return nil
+}
+
+// dependencyQuery liefert Paketnamen und Kommando für die Abfrage, z. B.
+// rpm -q bzw. dpkg-query -W. Nur Abfrage, keine Installation.
+func dependencyQuery() (deps []string, query []string, err error) {
+	if _, err := os.Stat("/usr/bin/dpkg-query"); err == nil {
+		return []string{
+				"build-essential", "libncurses-dev", "bison", "flex",
+				"libssl-dev", "libelf-dev", "bc", "git", "wget", "cpio",
+				"python3", "xz-utils", "lz4",
+			},
+			[]string{"dpkg-query", "-W", "-f=${binary:Package} ${db:Status-Status}\n"}, nil
+	}
+	if _, err := os.Stat("/usr/bin/rpm"); err == nil {
+		return []string{
+				"gcc", "make", "ncurses-devel", "bison", "flex",
+				"openssl-devel", "elfutils-libelf-devel", "bc", "git", "wget",
+				"python3", "xz", "lz4",
+			},
+			[]string{"rpm", "-q", "--qf", "%{NAME}\n"}, nil
+	}
+	return nil, nil, fmt.Errorf("unsupported distribution: cannot find dpkg-query or rpm")
+}
+
+// lastLines schneidet Ausgabe auf die letzten n Zeilen, damit Fehlermeldungen lesbar bleiben
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "; ")
 }
 
 // cloneKernelRepo clones or updates the Amazon Linux kernel repository
@@ -593,15 +630,23 @@ func (b *Builder) runCommandWithOutput(buildID string, cmd *exec.Cmd) error {
 		return err
 	}
 
-	// Read output
-	go func() {
-		scanner := bufio.NewScanner(io.MultiReader(stdout, stderr))
-		for scanner.Scan() {
-			b.addOutput(buildID, scanner.Text())
-		}
-	}()
+	// Be Pipes parallel lesen: MultiReader würde auf stdout blockieren, während
+	// der Prozess an vollem stderr-Pipe-Budget hängt.
+	var wg sync.WaitGroup
+	for _, r := range []io.Reader{stdout, stderr} {
+		wg.Add(1)
+		go func(r io.Reader) {
+			defer wg.Done()
+			scanner := bufio.NewScanner(r)
+			for scanner.Scan() {
+				b.addOutput(buildID, scanner.Text())
+			}
+		}(r)
+	}
 
-	return cmd.Wait()
+	err := cmd.Wait()
+	wg.Wait() // gesammelte Ausgabe geht sonst bei failBuild verloren
+	return err
 }
 
 // GetSupportedVersions returns the list of kernel versions that can be built

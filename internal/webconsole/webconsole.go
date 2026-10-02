@@ -5906,7 +5906,7 @@ func (wc *WebConsole) renderImagesPage() string {
                     This process will:
                 </p>
                 <ul style="margin-left: 20px; margin-bottom: 16px; color: var(--text-secondary);">
-                    <li>Install required build dependencies (gcc, make, etc.)</li>
+                    <li>Verify required build dependencies are present (gcc, make, etc.)</li>
                     <li>Clone the Amazon Linux kernel repository</li>
                     <li>Apply Firecracker microVM configuration</li>
                     <li>Compile the kernel (this may take 15-30 minutes)</li>
