@@ -71,3 +71,6 @@ It provides a REST API and web-based UI for managing virtual machines, networks,
   `MultiWriter`.
 - Add `/etc/firecrackmanager` to `ReadWritePaths` in the unit files so that
   saving the proxy configuration keeps working under `ProtectSystem=strict`.
+- Grant the jailer its chroot directory (`/srv/jailer`) in the systemd
+  sandbox. Enabling the jailer previously failed because `ProtectSystem=strict`
+  made the jail directory read-only; the directory is now created up front.

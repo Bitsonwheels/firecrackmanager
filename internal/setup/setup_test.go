@@ -20,7 +20,7 @@ func TestServiceFileContent(t *testing.T) {
 		"ProtectSystem=strict",
 		"ProtectHome=read-only",
 		"PrivateTmp=true",
-		"ReadWritePaths=" + DefaultDataDir + " " + DefaultLogDir + " /etc/firecrackmanager /run " + DefaultBuilderDir,
+		"ReadWritePaths=" + DefaultDataDir + " " + DefaultLogDir + " /etc/firecrackmanager /run " + DefaultBuilderDir + " " + DefaultJailerDir,
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("unit should contain %q, got:\n%s", want, content)

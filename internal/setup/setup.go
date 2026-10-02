@@ -32,6 +32,9 @@ const (
 	DefaultPidFile         = "/var/run/firecrackmanager.pid"
 	DefaultBuilderDir      = "/home/Builder"
 
+	// 必须与 vm.DefaultJailerChrootBase 一致：jailer 的 chroot 目录要在 ReadWritePaths 里
+	DefaultJailerDir = "/srv/jailer"
+
 	// Firecracker compatible kernel and rootfs from quickstart guide
 	DebianKernelURL = "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin"
 	DebianRootFSURL = "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/rootfs/bionic.rootfs.ext4"
@@ -697,6 +700,7 @@ func (s *Setup) createDirectories() error {
 		filepath.Dir(DefaultPidFile),
 		// systemd 的 ReadWritePaths 引用不存在的目录会导致 unit 启动失败，这里一并创建
 		DefaultBuilderDir,
+		DefaultJailerDir,
 	}
 
 	for _, dir := range dirs {
@@ -1039,7 +1043,7 @@ StandardError=journal
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%s %s %s /run %s
+ReadWritePaths=%s %s %s /run %s %s
 PrivateTmp=true
 
 # Required capabilities for VM management, networking, and image building
@@ -1049,7 +1053,7 @@ CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN
 [Install]
 WantedBy=multi-user.target
 `, binaryPath, DefaultConfigPath, DefaultPidFile,
-		DefaultDataDir, DefaultLogDir, filepath.Dir(DefaultConfigPath), DefaultBuilderDir)
+		DefaultDataDir, DefaultLogDir, filepath.Dir(DefaultConfigPath), DefaultBuilderDir, DefaultJailerDir)
 }
 
 // downloadImages downloads the kernel and rootfs images

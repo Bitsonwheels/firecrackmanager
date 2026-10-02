@@ -55,6 +55,7 @@ service_file="/etc/systemd/system/firecrackmanager.service"
 config_dir="/etc/firecrackmanager"
 config_file="${config_dir}/settings.json"
 builder_dir="/home/Builder"
+jailer_dir="/srv/jailer"
 
 cd "${REMOTE_TMP}"
 sha256sum -c "${APP_BINARY}.sha256"
@@ -69,6 +70,7 @@ install -d -m 755 \
   "${APP_DATA_DIR}/disks" \
   "${APP_DATA_DIR}/logs" \
   "${builder_dir}" \
+  "${jailer_dir}" \
   "${config_dir}"
 
 install -m 755 "${artifact}" /usr/local/bin/firecrackmanager
@@ -103,7 +105,7 @@ StandardError=journal
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=${APP_DATA_DIR} ${config_dir} /run ${builder_dir}
+ReadWritePaths=${APP_DATA_DIR} ${config_dir} /run ${builder_dir} ${jailer_dir}
 PrivateTmp=true
 AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
