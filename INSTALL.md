@@ -45,8 +45,16 @@ mkdir -p /var/lib/firecrackmanager/snapshots
 mkdir -p /var/lib/firecrackmanager/disks
 mkdir -p /var/log/firecrackmanager
 mkdir -p /home/Builder
-mkdir -p /srv/jailer
+mkdir -p /var/lib/firecrackmanager/jail
 ```
+
+> **Hinweis zum Jail-Verzeichnis:** Der Jailer-Pfad muss im selben Mount liegen wie
+> `data_dir`. `ProtectSystem=strict` bind-mounted jeden `ReadWritePaths`-Eintrag als
+> eigenen Mount, ein Hardlink aus `data_dir` in den Jail scheitert dann mit `EXDEV`.
+> Kernel und Rootfs werden per Hardlink in den Jail gelegt — eine Kopie würde alle
+> Gast-Schreibvorgänge in einer Datei landen lassen, die beim Stop gelöscht wird.
+> Deshalb bricht fcm in dem Fall mit einer klaren Fehlermeldung ab, statt still zu
+> kopieren.
 
 ### Step 3: Create Configuration File
 
@@ -82,7 +90,7 @@ StandardError=journal
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/var/lib/firecrackmanager /var/log/firecrackmanager /etc/firecrackmanager /run /home/Builder /srv/jailer
+ReadWritePaths=/var/lib/firecrackmanager /var/log/firecrackmanager /etc/firecrackmanager /run /home/Builder /var/lib/firecrackmanager/jail
 PrivateTmp=true
 AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_MKNOD CAP_FOWNER

@@ -32,8 +32,9 @@ const (
 	DefaultPidFile         = "/var/run/firecrackmanager.pid"
 	DefaultBuilderDir      = "/home/Builder"
 
-	// 必须与 vm.DefaultJailerChrootBase 一致：jailer 的 chroot 目录要在 ReadWritePaths 里
-	DefaultJailerDir = "/srv/jailer"
+	// 必须与 vm.DefaultJailerChrootBase 一致，且必须与 DefaultDataDir 同一个 mount：
+	// jail 里的 kernel/rootfs 靠 hardlink 引入，跨 mount 会 EXDEV。
+	DefaultJailerDir = "/var/lib/firecrackmanager/jail"
 
 	// Firecracker compatible kernel and rootfs from quickstart guide
 	DebianKernelURL = "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin"

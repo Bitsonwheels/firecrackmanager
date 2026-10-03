@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"firecrackmanager/internal/database"
 	"testing"
 )
 
@@ -57,5 +59,34 @@ func TestWriteRootFSDNSConfigReplacesResolvedStubSymlink(t *testing.T) {
 func TestWriteRootFSDNSConfigRejectsInvalidServers(t *testing.T) {
 	if err := writeRootFSDNSConfig(t.TempDir(), "not-an-ip", nil); err == nil {
 		t.Fatalf("writeRootFSDNSConfig() should reject invalid DNS servers")
+	}
+}
+
+// Regressionstest: der jailer darf firecracker nicht aus der Supervision loesen.
+// --daemonize und --new-pid-ns lassen den jailer nach dem Fork sofort exiten,
+// wodurch startVMInternal per cmd.Wait() den Tod des VM meldet, obwohl er noch
+// bootet (Monitor raeumt dann Socket und Jail-Verzeichnis eines laufenden VM auf).
+func TestBuildJailerArgsKeepsFirecrackerSupervised(t *testing.T) {
+	m := &Manager{jailerConfig: &JailerConfig{
+		Enabled:    true,
+		ChrootBase: DefaultJailerChrootBase,
+		UID:        1000,
+		GID:        1000,
+		CgroupVer:  2,
+	}}
+
+	args := m.buildJailerArgs(&database.VM{ID: "abc123"}, &jailInfo{socketPath: "/run/firecracker.socket"})
+	joined := strings.Join(args, " ")
+
+	for _, forbidden := range []string{"--daemonize", "--new-pid-ns"} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("jailer args enthalten %s, firecracker waere nicht mehr als Kindprozess ueberwachbar: %s", forbidden, joined)
+		}
+	}
+	// chroot-Isolation muss erhalten bleiben
+	for _, required := range []string{"--chroot-base-dir " + DefaultJailerChrootBase, "--uid 1000", "--gid 1000"} {
+		if !strings.Contains(joined, required) {
+			t.Errorf("jailer args fehlen %q: %s", required, joined)
+		}
 	}
 }

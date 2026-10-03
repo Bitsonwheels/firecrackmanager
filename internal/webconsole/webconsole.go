@@ -8106,7 +8106,7 @@ func (wc *WebConsole) renderSettingsPage() string {
                     </div>
                     <div class="form-group">
                         <label>Chroot Base Directory</label>
-                        <input type="text" id="jailerChrootBase" name="chroot_base" value="/srv/jailer">
+                        <input type="text" id="jailerChrootBase" name="chroot_base" value="/var/lib/firecrackmanager/jail">
                         <small style="color: var(--text-secondary);">Base directory for jail environments</small>
                     </div>
                     <div class="form-group">
@@ -8132,20 +8132,6 @@ func (wc *WebConsole) renderSettingsPage() string {
                         <input type="text" id="jailerNetNS" name="netns" placeholder="Optional">
                         <small style="color: var(--text-secondary);">Path to network namespace (leave empty for default)</small>
                     </div>
-                </div>
-                <div class="form-group" style="margin-top: 15px;">
-                    <label style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="jailerDaemonize" name="daemonize" style="width: auto;" checked>
-                        <span>Daemonize</span>
-                    </label>
-                    <small style="color: var(--text-secondary);">Run jailer as a daemon (recommended)</small>
-                </div>
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="jailerNewPidNS" name="new_pid_ns" style="width: auto;" checked>
-                        <span>New PID Namespace</span>
-                    </label>
-                    <small style="color: var(--text-secondary);">Run VM in a new PID namespace for isolation</small>
                 </div>
                 <div style="background: var(--bg-tertiary); padding: 15px; border-radius: 8px; margin-top: 15px;">
                     <h4 style="margin-bottom: 10px; color: var(--text-secondary);">Resource Limits (Optional)</h4>
@@ -8515,13 +8501,11 @@ async function loadJailerConfig() {
         const config = data.config || {};
         document.getElementById('jailerEnabled').checked = config.enabled || false;
         document.getElementById('jailerPath').value = config.jailer_path || '/usr/sbin/jailer';
-        document.getElementById('jailerChrootBase').value = config.chroot_base || '/srv/jailer';
+        document.getElementById('jailerChrootBase').value = config.chroot_base || '/var/lib/firecrackmanager/jail';
         document.getElementById('jailerUID').value = config.uid || 1000;
         document.getElementById('jailerGID').value = config.gid || 1000;
         document.getElementById('jailerCgroupVer').value = config.cgroup_version || 2;
         document.getElementById('jailerNetNS').value = config.netns || '';
-        document.getElementById('jailerDaemonize').checked = config.daemonize !== false;
-        document.getElementById('jailerNewPidNS').checked = config.new_pid_ns !== false;
         document.getElementById('jailerFsize').value = config.resource_limits?.fsize || 0;
         document.getElementById('jailerNoFile').value = config.resource_limits?.no_file || 0;
 
@@ -8551,8 +8535,6 @@ if (document.getElementById('jailerForm')) {
             gid: parseInt(document.getElementById('jailerGID').value) || 1000,
             cgroup_version: parseInt(document.getElementById('jailerCgroupVer').value) || 2,
             netns: document.getElementById('jailerNetNS').value,
-            daemonize: document.getElementById('jailerDaemonize').checked,
-            new_pid_ns: document.getElementById('jailerNewPidNS').checked,
             resource_limits: {
                 fsize: parseInt(document.getElementById('jailerFsize').value) || 0,
                 no_file: parseInt(document.getElementById('jailerNoFile').value) || 0

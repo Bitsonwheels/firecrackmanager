@@ -58,7 +58,13 @@ const (
 	FirecrackerHypervisorArg = "fcm.hypervisor=firecracker fcm.managed=true"
 
 	// Jailer defaults
-	DefaultJailerChrootBase = "/srv/jailer"
+	//
+	// Der chroot-Basis-Pfad MUSS im selben Mount liegen wie das Datenverzeichnis
+	// (Kernel/Rootfs): setupJail legt die Dateien per Hardlink in den Jail, weil eine
+	// Kopie alle Gast-Schreibvorgänge in einer Datei landen ließe, die beim Stop
+	// gelöscht wird. Unter ProtectSystem=strict bind-mounted systemd jeden
+	// ReadWritePaths-Eintrag als eigenen Mount, dann schlaegt os.Link mit EXDEV fehl.
+	DefaultJailerChrootBase = "/var/lib/firecrackmanager/jail"
 	DefaultJailerUID        = 1000
 	DefaultJailerGID        = 1000
 )
@@ -71,9 +77,7 @@ type JailerConfig struct {
 	UID            int    `json:"uid"`
 	GID            int    `json:"gid"`
 	CgroupVer      int    `json:"cgroup_version"` // 1 or 2
-	Daemonize      bool   `json:"daemonize"`
-	NewPidNS       bool   `json:"new_pid_ns"`
-	NetNS          string `json:"netns"` // Optional network namespace path
+	NetNS          string `json:"netns"`          // Optional network namespace path
 	ResourceLimits struct {
 		Fsize  int64 `json:"fsize"`   // Max file size (0 = unlimited)
 		NoFile int   `json:"no_file"` // Max open files (0 = default)
@@ -217,8 +221,6 @@ func NewManager(db *database.DB, netMgr *network.Manager, dataDir string, logger
 			UID:        DefaultJailerUID,
 			GID:        DefaultJailerGID,
 			CgroupVer:  2,
-			Daemonize:  false,
-			NewPidNS:   true,
 		},
 		operations: make(map[string]*OperationProgress),
 	}
@@ -302,22 +304,16 @@ func (m *Manager) setupJail(vm *database.VM) (*jailInfo, error) {
 	// Hard link kernel to jail
 	kernelName := filepath.Base(vm.KernelPath)
 	jailKernelPath := filepath.Join(jailRoot, kernelName)
-	if err := os.Link(vm.KernelPath, jailKernelPath); err != nil {
-		// Try copy if hard link fails (cross-device)
-		if err := copyFile(vm.KernelPath, jailKernelPath); err != nil {
-			return nil, fmt.Errorf("failed to link/copy kernel to jail: %w", err)
-		}
+	if err := linkIntoJail(vm.KernelPath, jailKernelPath); err != nil {
+		return nil, fmt.Errorf("failed to link kernel into jail: %w", err)
 	}
 	info.kernelPath = "/" + kernelName
 
 	// Hard link rootfs to jail
 	rootfsName := filepath.Base(vm.RootFSPath)
 	jailRootfsPath := filepath.Join(jailRoot, rootfsName)
-	if err := os.Link(vm.RootFSPath, jailRootfsPath); err != nil {
-		// Try copy if hard link fails (cross-device)
-		if err := copyFile(vm.RootFSPath, jailRootfsPath); err != nil {
-			return nil, fmt.Errorf("failed to link/copy rootfs to jail: %w", err)
-		}
+	if err := linkIntoJail(vm.RootFSPath, jailRootfsPath); err != nil {
+		return nil, fmt.Errorf("failed to link rootfs into jail: %w", err)
 	}
 	info.rootfsPath = "/" + rootfsName
 
@@ -327,11 +323,8 @@ func (m *Manager) setupJail(vm *database.VM) (*jailInfo, error) {
 		for _, disk := range additionalDisks {
 			diskName := filepath.Base(disk.Path)
 			jailDiskPath := filepath.Join(jailRoot, diskName)
-			if err := os.Link(disk.Path, jailDiskPath); err != nil {
-				if err := copyFile(disk.Path, jailDiskPath); err != nil {
-					m.logger("Warning: failed to link disk %s to jail: %v", disk.Path, err)
-					continue
-				}
+			if err := linkIntoJail(disk.Path, jailDiskPath); err != nil {
+				return nil, fmt.Errorf("failed to link disk %s into jail: %w", disk.Path, err)
 			}
 			info.diskPaths[disk.DriveID] = "/" + diskName
 		}
@@ -344,8 +337,10 @@ func (m *Manager) setupJail(vm *database.VM) (*jailInfo, error) {
 	}
 	info.socketPath = "/run/firecracker.socket"
 
-	// Change ownership of jail to jailer UID/GID
-	if err := chownRecursive(jailBase, config.UID, config.GID); err != nil {
+	// Change ownership of jail to jailer UID/GID.
+	// 内核镜像被跳过：它是所有 VM 共享的同一个 inode（hardlink），chown 会连带
+	// 改掉 /var/lib 下的原始文件属主。firecracker 只读内核，root:root 0644 足够。
+	if err := chownRecursive(jailBase, jailKernelPath, config.UID, config.GID); err != nil {
 		m.logger("Warning: failed to chown jail directory: %v", err)
 	}
 
@@ -372,11 +367,29 @@ func (m *Manager) cleanupJail(vmID string) error {
 	return nil
 }
 
-// chownRecursive changes ownership of a directory recursively
-func chownRecursive(path string, uid, gid int) error {
+// linkIntoJail hardlinks a kernel, rootfs or disk file into the jail root.
+//
+// Hardlink statt Kopie ist Pflicht: bei einer Kopie landen alle Gast-Schreibvorgänge
+// in der Jail-Datei, und die wird beim Stop geloescht - der Gast verliert sie.
+// Deshalb wird bewusst nicht auf copyFile zurueckgefallen: EXDEV bedeutet, dass der
+// jail-Pfad in einem anderen Mount liegt (systemd bind-mounted jeden ReadWritePaths-
+// Eintrag unter ProtectSystem=strict als eigenen Mount), dann muss der chroot-Basis-
+// Pfad in den Datenverzeichnis-Mount gelegt werden.
+func linkIntoJail(src, dst string) error {
+	if err := os.Link(src, dst); err != nil {
+		return fmt.Errorf("%s -> %s: %w (Jail-Basis und Datenverzeichnis muessen im selben Mount liegen)", src, dst, err)
+	}
+	return nil
+}
+
+// chownRecursive changes ownership of a directory recursively, skipping one path
+func chownRecursive(path, skip string, uid, gid int) error {
 	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if name == skip {
+			return nil
 		}
 		return os.Chown(name, uid, gid)
 	})
@@ -399,15 +412,10 @@ func (m *Manager) buildJailerArgs(vm *database.VM, jailInfo *jailInfo) []string 
 		args = append(args, "--cgroup-version", fmt.Sprintf("%d", config.CgroupVer))
 	}
 
-	// Daemonize
-	if config.Daemonize {
-		args = append(args, "--daemonize")
-	}
-
-	// New PID namespace
-	if config.NewPidNS {
-		args = append(args, "--new-pid-ns")
-	}
+	// 注意：这里不能传 --daemonize / --new-pid-ns。两者都会让 jailer fork 出
+	// firecracker 后立刻退出，父进程不再是 firecracker，本进程就用 cmd.Wait()
+	// 监控不到真正的 VM，会误判为“已退出”并删掉 socket 和 jail 目录。
+	// firecracker 必须留在前台，才能作为本进程的直接子进程被 stop/状态/控制台管理。
 
 	// Network namespace
 	if config.NetNS != "" {

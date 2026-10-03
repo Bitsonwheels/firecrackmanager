@@ -52,6 +52,24 @@ It provides a REST API and web-based UI for managing virtual machines, networks,
 
 ## Changelog
 
+### 2026-10-03
+- Jailed VMs no longer die one second after `InstanceStart`. `--daemonize` and
+  `--new-pid-ns` make the jailer fork firecracker and exit immediately, so
+  `cmd.Wait()` reported the VM as gone while it was still booting, and the
+  monitor then removed the API socket and the jail directory of a running VM.
+  Neither flag is passed any more: firecracker stays a supervised child, so
+  stop, status, console and metrics keep working. chroot and cgroups are
+  unaffected.
+- Move the jailer chroot base from `/srv/jailer` to
+  `/var/lib/firecrackmanager/jail`. `ProtectSystem=strict` bind-mounts every
+  `ReadWritePaths` entry as its own mount, so hardlinking kernel and rootfs from
+  `data_dir` into a `/srv` jail failed with `EXDEV`. The code silently fell back
+  to copying, which sent every guest write into a copy that is deleted on stop.
+  A failed hardlink is now a hard error naming the mount requirement.
+- Stop chowning the kernel image inside the jail. It is a hardlink shared by all
+  VMs, so the recursive chown also changed the owner of the original file under
+  `data_dir`. Firecracker only reads it.
+
 ### 2026-10-02
 - Resolve the Firecracker/Jailer binary path at runtime instead of hardcoding
   `/usr/sbin/firecracker`. It now prefers `PATH`, then the common install

@@ -14,7 +14,7 @@ StandardError=journal
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/var/lib/firecrackmanager /var/log/firecrackmanager /etc/firecrackmanager /run /home/Builder /srv/jailer
+ReadWritePaths=/var/lib/firecrackmanager /var/log/firecrackmanager /etc/firecrackmanager /run /home/Builder /var/lib/firecrackmanager/jail
 PrivateTmp=true
 
 # VM 管理、网络和 rootfs 构建所需 capabilities

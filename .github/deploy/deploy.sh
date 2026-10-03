@@ -55,7 +55,7 @@ service_file="/etc/systemd/system/firecrackmanager.service"
 config_dir="/etc/firecrackmanager"
 config_file="${config_dir}/settings.json"
 builder_dir="/home/Builder"
-jailer_dir="/srv/jailer"
+jailer_dir="/var/lib/firecrackmanager/jail"
 
 cd "${REMOTE_TMP}"
 sha256sum -c "${APP_BINARY}.sha256"
